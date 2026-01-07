@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TIC - Timbre Impression Chart v4 (Refined)</title>
+  <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+  <style>
+    /* --- 基本スタイル --- */
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      color: #333;
+      padding-bottom: 40px;
+    }
+
+    #container {
+      width: 100%;
+      max-width: 720px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    /* --- キャンバスエリア --- */
+    #canvas-wrapper {
+      position: -webkit-sticky;
+      position: sticky;
+      top: 0;
+      background: #eee;
+      z-index: 100;
+      padding: 0;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      width: 100%;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+    }
+
+    canvas {
+      display: block;
+      background: #ccc;
+      max-width: 100%;
+      height: auto; 
+    }
+
+    /* --- コントロールエリア --- */
+    #controls {
+      padding: 15px;
+      box-sizing: border-box;
+      background: #fff;
+    }
+
+    .input-group {
+      margin-bottom: 15px;
+    }
+    input[type="text"], select {
+      width: 100%;
+      padding: 10px;
+      box-sizing: border-box;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+    #textInput { font-weight: bold; }
+
+    /* 共通ボックススタイル */
+    .control-box {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background: #fafafa;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    /* 全体設定、Stage設定など */
+    .simple-grid {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .simple-grid label {
+      flex: 1 1 30%; /* 3列表示 */
+      font-size: 0.9em;
+      display: flex;
+      flex-direction: column;
+      font-weight: bold;
+      text-align: center;
+      align-items: center;
+      min-width: 80px;
+    }
+
+    /* --- パラメータセクション --- */
+    .param-section {
+      margin-bottom: 25px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+    
+    .param-header {
+      background: #f0f0f0;
+      padding: 10px 15px;
+      font-weight: bold;
+      border-bottom: 1px solid #ddd;
+      font-size: 1em;
+      color: #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .slider-grid {
+      display: grid;
+      /* スマホデフォルト: 縦1列 */
+      grid-template-columns: 1fr;
+      gap: 15px;
+      padding: 20px 10px;
+    }
+
+    .band-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      width: 100%;
+    }
+
+    .band-label {
+      font-size: 0.9em;
+      font-weight: bold;
+      color: #555;
+      margin-bottom: 2px;
+    }
+
+    /* スライダー本体のスタイル */
+    input[type=range] {
+      -webkit-appearance: none;
+      height: 6px;
+      border-radius: 4px;
+      background: #ddd;
+      cursor: pointer;
+      margin: 10px 0;
+      width: 75%;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      background: #333;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    .value {
+      font-weight: bold;
+      text-align: center;
+      font-size: 1.1em; 
+      color: #0078d7;
+      display: block;
+      width: 100%;
+      margin-top: 2px;
+    }
+
+    /* --- PC / タブレット (600px以上) --- */
+    @media (min-width: 600px) {
+      .slider-grid {
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+        padding: 10px;
+      }
+      
+      .band-label {
+        font-size: 0.75em;
+        height: 2.4em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1.1;
+      }
+
+      input[type=range] {
+        width: 100%;
+        margin: 5px 0;
+      }
+      
+      input[type=range]::-webkit-slider-thumb {
+        width: 18px;
+        height: 18px;
+      }
+    }
+
+    /* 評価エリア */
+    #preference-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    #preference-controls label {
+      width: 100%; 
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center; 
+      font-weight: bold;
+    }
+    .pref-score-label {
+      grid-column: 1 / -1;
+      font-weight: bold;
+    }
+
+    /* ボタンエリア */
+    #btn-area {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+    }
+    .saveBtn, .fileBtn {
+      flex: 1;
+      padding: 14px;
+      font-size: 1em;
+      font-weight: bold;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: center;
+    }
+    
+    #saveFullBtn { background: rgb(137, 137, 137); }
+    #saveGraphBtn { background: #444; }
+    #exportDataBtn { background: rgb(183, 53, 109); }
+    #importDataBtn { background: rgb(5, 123, 199); }
+
+    @media (max-width: 600px) {
+      .btn-row { flex-direction: column; }
+      #controls { padding: 15px 10px; }
+      .simple-grid input[type=range], #preference-controls input[type=range] {
+          width: 75%;
+          display: block;
+          margin-left: auto;
+          margin-right: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="canvas-wrapper">
+      <canvas id="graphCanvas" width="680" height="500"></canvas>
+    </div>
+    
+    <div id="controls">
+      <div class="input-group">
+        <input id="textInput" type="text" placeholder="製品名など / Product Name" maxlength="100" />
+        <input id="driverInput" type="text" placeholder="ドライバー構成 / Driver Info" maxlength="100" />
+        
+        <select id="presetSelect">
+          <option value="" disabled selected>プリセットを選択 / Select Preset</option>
+          <optgroup label="音のカタチ / Sound shape">
+            <option value="flat">フラット / Flat, Neutral</option>
+            <option value="vshape">弱ドンシャリ / Weak V-Shape</option>
+            <option value="ultrav">ドンシャリ / V-Shape</option>
+            <option value="narrow1">かまぼこ(中高域) / Narrow MHF</option>
+            <option value="narrow2">かまぼこ(中低域) / Narrow MLF</option>
+            <option value="basshead">低音特化 / BASS HEAD</option>
+            <option value="trebleboost">高音特化 / Treble Boost</option>
+          </optgroup>
+          <optgroup label="温度・寒暖 / Temperature">
+            <option value="temp-cool">寒色 / Cool (Warmth:0)</option>
+            <option value="temp-scool">寒色寄り / Slightly Cool</option>
+            <option value="temp-neutral">ニュートラル / Neutral</option>
+            <option value="temp-swarm">暖色寄り / Slightly Warm</option>
+            <option value="temp-warm">暖色 / Warm</option>
+            <option value="temp-cw1">寒暖1 / Cool-Warm 1</option>
+            <option value="temp-cw2">寒暖2 / Cool-Warm 2</option>
+            <option value="temp-cw3">寒暖3 / Cool-Warm 3</option>
+          </optgroup>
+          <optgroup label="質感・ボケ / Texture & Blur">
+            <option value="blur-zero">ボケなし / Sharp</option>
+            <option value="blur-weak">ボケ微 / Slightly soft</option>
+            <option value="blur-weak2">ボケ弱 / Little soft</option>
+            <option value="blur-mid">ボケ中 / Middle soft</option>
+            <option value="blur-strong">ボケ強 / Very Soft</option>
+            <option value="blur-s-strong">ボケ特強 / Ultra soft</option>
+            <option value="blur-max">ボケ最強 / Softest</option>
+          </optgroup>
+        </select>
+      </div>
+      
+      <!-- レベル・形状調整 -->
+      <div id="extra-controls" class="control-box simple-grid">
+        <label>全体レベル / Overall Lv
+          <input type="range" id="overallLevel" min="0" max="10" value="5" />
+          <span class="value" id="valOverall">5</span>
+        </label>
+        <label>高域レベル / High-Lv
+          <input type="range" id="highLevel" min="0" max="10" value="10" />
+          <span class="value" id="valHigh">10</span>
+        </label>
+        <label>低域レベル / Low-Lv
+          <input type="range" id="lowLevel" min="0" max="10" value="10" />
+          <span class="value" id="valLow">10</span>
+        </label>
+
+        <!-- 新しいスライダー群 -->
+        <label style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 5px; flex-basis: 45%;">
+          丸み / Roundness<br><span style="font-size:0.8em; font-weight:normal;">(Linear &harr; Curve/Round)</span>
+          <input type="range" id="tensionSlider" min="0" max="5" value="5" />
+          <span class="value" id="valTension">5</span>
+        </label>
+        <label style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 5px; flex-basis: 45%;">
+          解像度 / Resolution<br><span style="font-size:0.8em; font-weight:normal;">(Step &harr; Smooth)</span>
+          <input type="range" id="smoothSlider" min="0" max="5" value="5" />
+          <span class="value" id="valSmooth">5</span>
+        </label>
+      </div>
+
+      <div id="sliders-area"></div>
+
+      <div id="stage-controls" class="control-box simple-grid">
+        <label>音場の広さ / W
+            <input type="range" id="stageWidth" min="1" max="5" value="3" />
+            <span class="value" id="valStageWidth">3</span>
+        </label>
+        <label>音場の高さ / H
+            <input type="range" id="stageHeight" min="1" max="5" value="3" />
+            <span class="value" id="valStageHeight">3</span>
+        </label>
+        <label>音場の奥行 / D
+            <input type="range" id="stageDepth" min="1" max="5" value="3" />
+            <span class="value" id="valStageDepth">3</span>
+        </label>
+      </div>
+      
+      <div id="preference-controls" class="control-box">
+        <label class="pref-score-label">得点 / Score (0= 隠す / Hide)
+            <input type="range" id="score" min="0" max="100" value="80" />
+            <span class="value" id="valScore">80</span>
+        </label>
+        <label>お気に入り度 / Fav
+          <input type="range" id="favorite" min="0" max="5" value="3" />
+          <span class="value" id="valFavorite">3</span>
+        </label>
+        <label>快適性・装着感 / Comfy
+          <input type="range" id="comfort" min="0" max="5" value="3" />
+          <span class="value" id="valComfort">3</span>
+        </label>
+        <label>コスパ / Value
+          <input type="range" id="cost" min="0" max="5" value="3" />
+          <span class="value" id="valCost">3</span>
+        </label>
+        <label>デザインの好み / Design
+          <input type="range" id="design" min="0" max="5" value="3" />
+          <span class="value" id="valDesign">3</span>
+        </label>
+      </div>
+      
+      <div id="btn-area">
+        <div class="btn-row">
+            <button id="saveGraphBtn" class="saveBtn">画像の保存 / IMG SAVE</button>
+            <button id="saveFullBtn" class="saveBtn">全画面保存 / FULL IMG SAVE</button>
+        </div>
+        <div class="btn-row">
+            <button id="exportDataBtn" class="fileBtn">設定保存 / DATA SAVE</button>
+            <button id="importDataBtn" class="fileBtn" onclick="document.getElementById('fileInput').click()">設定読込 / DATA LOAD</button>
+            <input type="file" id="fileInput" style="display: none;" accept=".json,.txt" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById('graphCanvas');
+      const ctx = canvas.getContext('2d');
+
+      // スライダー配列定義
+      const freqSliders = [], warmthSliders = [], softnessSliders = [], densitySliders = [];
+      const bands = ['超高域 / UHF', '高域 / HF', '中高域 / MHF', '中域 / MF', '中低域 / MLF', '低域 / LF', '超低域 / ULF'];
+      // デフォルト値
+      const defaultFreq = [0, 3, 7, 10, 13, 17, 20];
+
+      const slidersArea = document.getElementById('sliders-area');
+
+      // パラメータグループの定義
+      const paramGroups = [
+        { label: '① 音域バランス / Level', arr: freqSliders, defaults: defaultFreq, min: 0, max: 20 },
+        { label: '② 温度感 / Warmth', arr: warmthSliders, defaults: 10, min: 0, max: 20 },
+        { label: '③ ボケの広さ / Blur Width', arr: softnessSliders, defaults: 0, min: 0, max: 20 },
+        { label: '④ ボケの強さ / Blur Strength', arr: densitySliders, defaults: 20, min: 0, max: 20 }
+      ];
+
+      // グループごとにセクションを作成して配置
+      paramGroups.forEach(group => {
+        const section = document.createElement('div');
+        section.className = 'param-section';
+        const header = document.createElement('div');
+        header.className = 'param-header';
+        header.textContent = group.label;
+        section.appendChild(header);
+        const grid = document.createElement('div');
+        grid.className = 'slider-grid';
+
+        bands.forEach((bandName, i) => {
+          const cell = document.createElement('div');
+          cell.className = 'band-cell';
+          const label = document.createElement('div');
+          label.className = 'band-label';
+          label.textContent = bandName;
+          const slider = document.createElement('input');
+          slider.type = 'range';
+          slider.min = group.min;
+          slider.max = group.max;
+          slider.step = 1;
+          let initVal = Array.isArray(group.defaults) ? group.defaults[i] : group.defaults;
+          slider.value = initVal;
+          const valSpan = document.createElement('span');
+          valSpan.className = 'value';
+          valSpan.textContent = initVal;
+          slider.addEventListener('input', () => {
+            valSpan.textContent = slider.value;
+            draw();
+          });
+          cell.appendChild(label);
+          cell.appendChild(slider);
+          cell.appendChild(valSpan);
+          grid.appendChild(cell);
+          group.arr.push(slider);
+        });
+        section.appendChild(grid);
+        slidersArea.appendChild(section);
+      });
+
+      // --- その他のスライダー定義 ---
+      const overallSlider = document.getElementById('overallLevel');
+      const highSlider = document.getElementById('highLevel');
+      const lowSlider = document.getElementById('lowLevel');
+      
+      const tensionSlider = document.getElementById('tensionSlider');
+      const smoothSlider = document.getElementById('smoothSlider');
+
+      const stageW = document.getElementById('stageWidth');
+      const stageH = document.getElementById('stageHeight');
+      const stageD = document.getElementById('stageDepth');
+      
+      const valOverall = document.getElementById('valOverall');
+      const valHigh = document.getElementById('valHigh');
+      const valLow = document.getElementById('valLow');
+      const valTension = document.getElementById('valTension');
+      const valSmooth = document.getElementById('valSmooth');
+      const valStageW = document.getElementById('valStageWidth');
+      const valStageH = document.getElementById('valStageHeight');
+      const valStageD = document.getElementById('valStageDepth');
+
+      function updateExtraVals() {
+        valOverall.textContent = overallSlider.value;
+        valHigh.textContent = highSlider.value;
+        valLow.textContent = lowSlider.value;
+        valTension.textContent = tensionSlider.value;
+        valSmooth.textContent = smoothSlider.value;
+        valStageW.textContent = stageW.value;
+        valStageH.textContent = stageH.value;
+        valStageD.textContent = stageD.value;
+      }
+
+      [overallSlider, highSlider, lowSlider, tensionSlider, smoothSlider, stageW, stageH, stageD].forEach(s => s.addEventListener('input', () => {
+          updateExtraVals();
+          draw();
+      }));
+
+      const textInput = document.getElementById('textInput');
+      const driverInput = document.getElementById('driverInput');
+      [textInput, driverInput].forEach(el => el.addEventListener('input', draw));
+
+      const scoreSlider = document.getElementById('score'), favSlider = document.getElementById('favorite'), comfortSlider = document.getElementById('comfort'), costSlider = document.getElementById('cost'), designSlider = document.getElementById('design');
+      const valScore = document.getElementById('valScore'), valFav = document.getElementById('valFavorite'), valComfort = document.getElementById('valComfort'), valCost = document.getElementById('valCost'), valDesign = document.getElementById('valDesign');
+
+      const prefSliders = [scoreSlider, favSlider, comfortSlider, costSlider, designSlider];
+      const prefVals = [valScore, valFav, valComfort, valCost, valDesign];
+
+      prefSliders.forEach((slider, idx) => {
+        slider.addEventListener('input', () => {
+          prefVals[idx].textContent = slider.value;
+          draw();
+        });
+      });
+
+      // --- プリセット処理 ---
+      const presetSelect = document.getElementById('presetSelect');
+      presetSelect.addEventListener('change', (e) => applyPreset(e.target.value));
+
+      function applyPreset(type) {
+          if (type.startsWith('blur-')) {
+            let sVal = 0;
+            switch(type) {
+                case 'blur-zero': sVal = 0; break;
+                case 'blur-weak': sVal = 1; break;
+                case 'blur-weak2': sVal = 3; break;
+                case 'blur-mid': sVal = 5; break;
+                case 'blur-strong': sVal = 10; break;
+                case 'blur-s-strong': sVal = 15; break;
+                case 'blur-max': sVal = 20; break;
+            }
+            softnessSliders.forEach(s => { s.value = sVal; s.nextElementSibling.textContent = sVal; });
+            densitySliders.forEach(s => { s.value = 20; s.nextElementSibling.textContent = 20; });
+            draw();
+            return;
+          }
+
+          if (type.startsWith('temp-')) {
+            let wVals = [10, 10, 10, 10, 10, 10, 10];
+            switch(type) {
+                case 'temp-cool': wVals = [0, 0, 0, 0, 0, 0, 0]; break;
+                case 'temp-scool': wVals = [5, 5, 5, 5, 5, 5, 5]; break;
+                case 'temp-neutral': wVals = [10, 10, 10, 10, 10, 10, 10]; break;
+                case 'temp-swarm': wVals = [15, 15, 15, 15, 15, 15, 15]; break;
+                case 'temp-warm': wVals = [20, 20, 20, 20, 20, 20, 20]; break;
+                case 'temp-cw1': wVals = [0, 2, 3, 5, 7, 9, 10]; break;
+                case 'temp-cw2': wVals = [0, 3, 6, 10, 13, 16, 20]; break;
+                case 'temp-cw3': wVals = [10, 11, 12, 14, 16, 18, 20]; break;
+            }
+            warmthSliders.forEach((s, i) => { s.value = wVals[i]; s.nextElementSibling.textContent = s.value; });
+            draw();
+            return;
+          }
+
+          let newFreq = [...defaultFreq], newOverall = 5, newHigh = 10, newLow = 10;
+          switch(type) {
+              case 'flat': newFreq = [0, 3, 7, 10, 13, 17, 20]; break;
+              case 'vshape': newFreq = [0, 1, 3, 6, 10, 15, 20]; break;
+              case 'ultrav': newFreq = [0, 1, 2, 3, 5, 11, 20]; break;
+              case 'narrow1': newFreq = [2, 10, 15, 18, 19, 19, 16]; break;
+			  case 'narrow2': newFreq = [2, 8, 13, 17, 19, 19, 15]; break;
+              case 'basshead': newOverall = 6; newHigh = 7; newFreq = [0, 4, 10, 14, 18, 20, 20]; break;
+              case 'trebleboost': newOverall = 6; newLow = 3; break;
+          }
+          freqSliders.forEach((s, i) => { s.value = newFreq[i]; s.nextElementSibling.textContent = s.value; });
+          overallSlider.value = newOverall; highSlider.value = newHigh; lowSlider.value = newLow;
+          updateExtraVals(); draw();
+      }
+
+      // --- 描画ロジック ---
+      function getRGB(warmth) {
+        const ratio = warmth / 20; 
+        return {
+          r: Math.round(0 + 242 * ratio),
+          g: Math.round(145 + (13 - 145) * ratio),
+          b: Math.round(242 + (94 - 242) * ratio)
+        };
+      }
+
+      function drawBackground(centerX, baseY, triHeight, baseX) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ccc';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 1;
+        for (let i = 1; i <= 10; i++) {
+          const scale = i / 10;
+          const topY = baseY + triHeight - triHeight * scale;
+          ctx.beginPath();
+          ctx.moveTo(centerX, topY); 
+          ctx.lineTo(centerX - baseX * scale, baseY + triHeight);
+          ctx.lineTo(centerX + baseX * scale, baseY + triHeight);
+          ctx.closePath();
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 28px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('High', centerX, baseY - 30);
+        ctx.fillText('Low', centerX - baseX - 20, 432);
+        ctx.fillText('Low', centerX + baseX + 20, 432);
+      }
+
+      /**
+       * ポリライン描画（Step時の破綻防止、Curve時のオーバーシュート抑制）
+       */
+      function drawPolyLine(ctx, points, smoothVal, tensionVal, stepDir = 'hv') {
+          if (points.length < 2) return;
+
+          const isCurveMode = (smoothVal === 5);
+
+          if (isCurveMode) {
+              // --- 曲線モード (0: Linear blend <-> 5: Spline blend) ---
+              const blend = tensionVal / 5;
+              // Tension 10でのオーバーシュートを抑えるため、tangentFactorを少し控えめにする
+              // 通常0.5だが、blendに応じて減衰させても良い。ここでは少しだけ下げて0.45とする
+              const tangentFactor = 0.45; 
+              const segments = 10;
+
+              for (let i = 0; i < points.length - 1; i++) {
+                  const p0 = (i > 0) ? points[i - 1] : points[0];
+                  const p1 = points[i];
+                  const p2 = points[i + 1];
+                  const p3 = (i < points.length - 2) ? points[i + 2] : p2;
+
+                  for (let j = 1; j <= segments; j++) {
+                      const t = j / segments;
+
+                      // Linear
+                      const lx = p1.x + (p2.x - p1.x) * t;
+                      const ly = p1.y + (p2.y - p1.y) * t;
+
+                      // Spline (Hermite / Catmull-Rom)
+                      const t2 = t * t;
+                      const t3 = t2 * t;
+                      
+                      const h00 = 2*t3 - 3*t2 + 1;
+                      const h10 = t3 - 2*t2 + t;
+                      const h01 = -2*t3 + 3*t2;
+                      const h11 = t3 - t2;
+                      
+                      const m1x = (p2.x - p0.x) * tangentFactor;
+                      const m1y = (p2.y - p0.y) * tangentFactor;
+                      const m2x = (p3.x - p1.x) * tangentFactor;
+                      const m2y = (p3.y - p1.y) * tangentFactor;
+                      
+                      const sx = h00*p1.x + h10*m1x + h01*p2.x + h11*m2x;
+                      const sy = h00*p1.y + h10*m1y + h01*p2.y + h11*m2y;
+
+                      const x = lx * (1 - blend) + sx * blend;
+                      const y = ly * (1 - blend) + sy * blend;
+
+                      ctx.lineTo(x, y);
+                  }
+              }
+          } else {
+              // --- ステップモード (角の丸め処理・破綻防止) ---
+              const steps = smoothVal + 1;
+              
+              // 基本となる最大半径（スライダー値に基づく）
+              // 少し大きめの基準値(40)に対してTensionを掛ける
+              const baseRadius = (tensionVal / 10) * 40;
+
+              let currentX = points[0].x;
+              let currentY = points[0].y;
+              
+              for (let i = 0; i < points.length - 1; i++) {
+                  const pStart = points[i];
+                  const pEnd = points[i+1];
+
+                  for (let j = 1; j <= steps; j++) {
+                      const t = j / steps;
+                      // 次の頂点（ターゲット）
+                      const targetX = pStart.x + (pEnd.x - pStart.x) * t;
+                      const targetY = pStart.y + (pEnd.y - pStart.y) * t;
+
+                      // コーナー（角）の座標
+                      let cornerX, cornerY;
+                      if (stepDir === 'hv') { // 横 -> 縦
+                          cornerX = targetX;
+                          cornerY = currentY;
+                      } else { // 縦 -> 横
+                          cornerX = currentX;
+                          cornerY = targetY;
+                      }
+
+                      // --- 半径の動的制限 (Adaptive Radius) ---
+                      // 現在のセグメントにおける移動量
+                      const distToCornerX = Math.abs(cornerX - currentX);
+                      const distToCornerY = Math.abs(cornerY - currentY);
+                      const distFromCornerX = Math.abs(targetX - cornerX);
+                      const distFromCornerY = Math.abs(targetY - cornerY);
+                      
+                      // 入ってくる辺の長さ と 出ていく辺の長さ
+                      const incomingLen = Math.sqrt(distToCornerX*distToCornerX + distToCornerY*distToCornerY);
+                      const outgoingLen = Math.sqrt(distFromCornerX*distFromCornerX + distFromCornerY*distFromCornerY);
+                      
+                      // 半径は、短い方の辺の半分を超えてはならない（さもないとえぐれる）
+                      const maxPossibleRadius = Math.min(incomingLen, outgoingLen) / 2;
+                      
+                      // 最終的な半径決定
+                      let radius = Math.min(baseRadius, maxPossibleRadius);
+                      // 微小な値なら丸めない（描画乱れ防止）
+                      if (radius < 0.5) radius = 0;
+
+                      if (radius > 0) {
+                          ctx.arcTo(cornerX, cornerY, targetX, targetY, radius);
+                          ctx.lineTo(targetX, targetY);
+                      } else {
+                          ctx.lineTo(cornerX, cornerY);
+                          ctx.lineTo(targetX, targetY);
+                      }
+                      
+                      currentX = targetX;
+                      currentY = targetY;
+                  }
+              }
+          }
+      }
+
+      /**
+       * 立方体を(cx, cy)を中心点として描画する
+       */
+      function drawCube(ctx, cx, cy, wVal, hVal, dVal, isWireframe) {
+         const step = 18; 
+         const w = wVal * step, h = hVal * step, d = dVal * step; 
+         const angle = Math.PI / 4, depthScale = 0.6; 
+         
+         const totalDx = d * Math.cos(angle) * depthScale;
+         const totalDy = -d * Math.sin(angle) * depthScale;
+         
+         const xStart = cx - (w / 2) - (totalDx / 2);
+         const yStart = cy + (h / 2) - (totalDy / 2);
+
+         const pFrontBL = { x: xStart, y: yStart };
+         const pFrontBR = { x: xStart + w, y: yStart };
+         const pFrontTR = { x: xStart + w, y: yStart - h };
+         const pFrontTL = { x: xStart, y: yStart - h };
+         
+         const pBackBL = { x: xStart + totalDx, y: yStart + totalDy };
+         const pBackBR = { x: xStart + w + totalDx, y: yStart + totalDy };
+         const pBackTR = { x: xStart + w + totalDx, y: yStart - h + totalDy };
+         const pBackTL = { x: xStart + totalDx, y: yStart - h + totalDy };
+
+         ctx.save();
+         ctx.lineJoin = 'round';
+         if (isWireframe) {
+            ctx.lineWidth = 1; ctx.strokeStyle = '#222'; ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(pFrontBL.x, pFrontBL.y); ctx.lineTo(pFrontBR.x, pFrontBR.y); ctx.lineTo(pFrontTR.x, pFrontTR.y); ctx.lineTo(pFrontTL.x, pFrontTL.y); ctx.closePath();
+            ctx.moveTo(pBackBL.x, pBackBL.y); ctx.lineTo(pBackBR.x, pBackBR.y); ctx.lineTo(pBackTR.x, pBackTR.y); ctx.lineTo(pBackTL.x, pBackTL.y); ctx.closePath();
+            ctx.moveTo(pFrontBL.x, pFrontBL.y); ctx.lineTo(pBackBL.x, pBackBL.y); ctx.moveTo(pFrontBR.x, pFrontBR.y); ctx.lineTo(pBackBR.x, pBackBR.y);
+            ctx.moveTo(pFrontTR.x, pFrontTR.y); ctx.lineTo(pBackTR.x, pBackTR.y); ctx.moveTo(pFrontTL.x, pFrontTL.y); ctx.lineTo(pBackTL.x, pBackTL.y);
+            ctx.stroke();
+         } else {
+            ctx.lineWidth = 1; ctx.strokeStyle = '#222'; ctx.setLineDash([]);
+            // Top
+            ctx.fillStyle = '#eee'; ctx.beginPath(); ctx.moveTo(pFrontTL.x, pFrontTL.y); ctx.lineTo(pFrontTR.x, pFrontTR.y); ctx.lineTo(pBackTR.x, pBackTR.y); ctx.lineTo(pBackTL.x, pBackTL.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+            // Right
+            ctx.fillStyle = '#999'; ctx.beginPath(); ctx.moveTo(pFrontTR.x, pFrontTR.y); ctx.lineTo(pFrontBR.x, pFrontBR.y); ctx.lineTo(pBackBR.x, pBackBR.y); ctx.lineTo(pBackTR.x, pBackTR.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+            // Front
+            ctx.fillStyle = '#bbb'; ctx.beginPath(); ctx.moveTo(pFrontBL.x, pFrontBL.y); ctx.lineTo(pFrontBR.x, pFrontBR.y); ctx.lineTo(pFrontTR.x, pFrontTR.y); ctx.lineTo(pFrontTL.x, pFrontTL.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+         }
+         ctx.restore();
+      }
+
+      function draw() {
+        const centerX = 340, baseY = 60, baseX = 200, triHeight = Math.sqrt(3) * baseX;
+        const overallScale = overallSlider.value / 10, verticalScale = highSlider.value / 10, horizontalScale = lowSlider.value / 10;
+        
+        const rawTension = parseInt(tensionSlider.value);
+        const rawSmooth = parseInt(smoothSlider.value);
+        
+        // Tension: 0~5 (Logic handled in drawPolyLine)
+        const tensionVal = rawTension;
+
+        drawBackground(centerX, baseY, triHeight, baseX);
+
+        // タイトルなど
+        ctx.save();
+        ctx.fillStyle = '#222'; ctx.font = 'bold 28px Arial, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText('Timbre', 20, 20); ctx.fillText('Impression', 20, 52); ctx.fillText('Chart', 20, 84);
+        const dText = driverInput.value.trim();
+        if(dText) {
+             let dSize = 24; ctx.font = `bold ${dSize}px Arial, sans-serif`;
+             while (ctx.measureText(dText).width > 220 && dSize > 10) { dSize--; ctx.font = `bold ${dSize}px Arial, sans-serif`; }
+             ctx.fillStyle = '#444'; ctx.fillText(dText, 20, 131);
+        }
+        ctx.restore();
+
+        // Stageエリア
+        const stageOriginY = 320, stageOriginX = 90; 
+        ctx.save();
+        ctx.fillStyle = '#222'; ctx.font = 'bold 28px Arial, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('Stage', stageOriginX, stageOriginY - 100); 
+        ctx.restore();
+        drawCube(ctx, stageOriginX, stageOriginY, parseInt(stageW.value), parseInt(stageH.value), parseInt(stageD.value), false);
+        drawCube(ctx, stageOriginX, stageOriginY, 5, 5, 5, true);
+
+        // SCORE / Icons
+        const rx = canvas.width - 20;
+        const scoreVal = parseInt(scoreSlider.value);
+        if (scoreVal > 0) {
+            ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillStyle = '#222'; ctx.font = 'bold 24px Arial, sans-serif'; ctx.fillText('SCORE', rx, 20);
+            ctx.font = `bold 72px Arial, sans-serif`; ctx.fillText(scoreVal, rx, 48); ctx.restore();
+        }
+        
+        ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; 
+        const iconStartY = 130, iconHeight = 65; 
+        const drawStat = (label, mark, val, y) => {
+           ctx.font = '28px sans-serif'; ctx.fillStyle = '#000';
+           let s = ""; for(let k=0; k<val; k++) s += mark;
+           ctx.fillText(s, rx, y + 18);
+           ctx.font = 'bold 18px Arial, sans-serif'; ctx.fillStyle = '#666'; ctx.fillText(label, rx, y + 40);
+        };
+        drawStat('Favorite', '★', parseInt(favSlider.value), iconStartY);
+        drawStat('Comfortable', '●', parseInt(comfortSlider.value), iconStartY + iconHeight);
+        drawStat('Value', '◆', parseInt(costSlider.value), iconStartY + iconHeight * 2);
+        drawStat('Design', '❤', parseInt(designSlider.value), iconStartY + iconHeight * 3);
+        ctx.restore();
+
+        // メイングラフデータ計算
+        const pL = [], pR = [], rgbs = [], dens = [], softs = [];
+        for (let i = 0; i < bands.length; i++) {
+            const freq = parseInt(freqSliders[i].value) / 20; 
+            const y0 = baseY + (triHeight * i / (bands.length - 1));
+            // 縦方向の圧縮
+            const y = baseY + triHeight - (baseY + triHeight - y0) * verticalScale * overallScale;
+            // 横方向の広がり
+            const xOff = baseX * freq * horizontalScale * overallScale;
+            
+            pL.push({ x: centerX - xOff, y }); 
+            pR.push({ x: centerX + xOff, y });
+            
+            rgbs.push(getRGB(parseInt(warmthSliders[i].value)));
+            dens.push(parseInt(densitySliders[i].value)); softs.push(parseInt(softnessSliders[i].value));
+        }
+
+        // --- 描画パスの構築関数 ---
+        const createShapePath = () => {
+            ctx.beginPath();
+            // Top Center
+            const topPt = { x: centerX, y: pL[0].y }; 
+            ctx.moveTo(topPt.x, topPt.y);
+
+            // Left Side: Top -> Bottom
+            // 左辺は「左(横)に張り出してから下(縦)へ」行くことで外側に広げる => 'hv'
+            drawPolyLine(ctx, pL, rawSmooth, tensionVal, 'hv');
+
+            // Bottom Edge: Linear connection from Left Bottom to Right Bottom
+            const pBottomL = pL[pL.length - 1];
+            const pBottomR = pR[pR.length - 1];
+            ctx.lineTo(pBottomR.x, pBottomR.y);
+
+            // Right Side: Bottom -> Top
+            const pR_rev = [...pR].reverse();
+            // 右辺は「上(縦)に行ってから左(横)へ戻る」ことで外側(右側)に壁を作る => 'vh'
+            drawPolyLine(ctx, pR_rev, rawSmooth, tensionVal, 'vh');
+            
+            ctx.closePath();
+        };
+
+        // ボケ（Blur）描画
+        if (softs.some(v => v > 0)) {
+            ctx.save();
+            const pL_blur = pL.map((p, i) => ({ x: p.x - softs[i] * 3.5, y: p.y }));
+            const pR_blur = pR.map((p, i) => ({ x: p.x + softs[i] * 3.5, y: p.y }));
+            
+            ctx.beginPath();
+            ctx.moveTo(centerX, pL_blur[0].y);
+            // ボケも同様の対称性を持たせる
+            drawPolyLine(ctx, pL_blur, rawSmooth, tensionVal, 'hv');
+            ctx.lineTo(pR_blur[pR.length-1].x, pR_blur[pR.length-1].y);
+            drawPolyLine(ctx, [...pR_blur].reverse(), rawSmooth, tensionVal, 'vh');
+            ctx.closePath();
+
+            ctx.filter = `blur(${5 + Math.max(...softs)}px)`;
+            const gB = ctx.createLinearGradient(0, pL[0].y, 0, pL[pL.length-1].y);
+            bands.forEach((_, i) => gB.addColorStop(i/(bands.length-1), `rgba(${rgbs[i].r},${rgbs[i].g},${rgbs[i].b},${dens[i]/20})`));
+            ctx.fillStyle = gB; 
+            ctx.fill(); 
+            ctx.restore();
+        }
+
+        // メイン形状描画
+        ctx.save();
+        createShapePath();
+        const gM = ctx.createLinearGradient(0, pL[0].y, 0, pL[pL.length-1].y);
+        bands.forEach((_, i) => gM.addColorStop(i/(bands.length-1), `rgba(${rgbs[i].r},${rgbs[i].g},${rgbs[i].b},0.9)`));
+        ctx.fillStyle = gM; 
+        ctx.fill(); 
+        ctx.restore();
+
+        // 最下部帯
+        const bH = 45;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, canvas.height - bH, canvas.width, bH);
+        const txt = textInput.value.trim();
+        if (txt) {
+          ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          let fs = 32; ctx.font = `bold ${fs}px Arial, sans-serif`;
+          while (ctx.measureText(txt).width > canvas.width * 0.9 && fs > 12) { fs--; ctx.font = `bold ${fs}px Arial, sans-serif`; }
+          ctx.fillText(txt, centerX, canvas.height - (bH / 2) + 2);
+        }
+      }
+
+      draw();
+      
+      document.getElementById('saveGraphBtn').addEventListener('click', () => { const a = document.createElement('a'); a.download = 'TIC_Graph.png'; a.href = canvas.toDataURL(); a.click(); });
+      document.getElementById('saveFullBtn').addEventListener('click', () => {
+        const w = document.getElementById('canvas-wrapper'), op = w.style.position;
+        w.style.position = 'static'; window.scrollTo(0,0);
+        html2canvas(document.getElementById('container'), { scale: 2, backgroundColor: "#fff", scrollY: 0, ignoreElements: el => el.id === 'btn-area' }).then(c => {
+            const a = document.createElement('a'); a.download = 'TIC_Full_Review.png'; a.href = c.toDataURL(); a.click(); w.style.position = op;
+        });
+      });
+      document.getElementById('exportDataBtn').addEventListener('click', () => {
+          const d = { 
+              text: textInput.value, driver: driverInput.value, 
+              overall: overallSlider.value, high: highSlider.value, low: lowSlider.value, 
+              tension: tensionSlider.value, smooth: smoothSlider.value, 
+              stage: { w: stageW.value, h: stageH.value, d: stageD.value }, 
+              pref: { score: scoreSlider.value, fav: favSlider.value, comfort: comfortSlider.value, cost: costSlider.value, design: designSlider.value }, 
+              freqs: freqSliders.map(s => s.value), warmth: warmthSliders.map(s => s.value), softness: softnessSliders.map(s => s.value), density: densitySliders.map(s => s.value) 
+          };
+          const u = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], {type: "application/json"}));
+          const a = document.createElement('a'); a.download = "TIC_Settings.json"; a.href = u; a.click(); URL.revokeObjectURL(u);
+      });
+      document.getElementById('fileInput').addEventListener('change', e => {
+          const f = e.target.files[0]; if(!f) return;
+          const r = new FileReader();
+          r.onload = ev => {
+              try {
+                  const d = JSON.parse(ev.target.result);
+                  if(d.text!==undefined) textInput.value=d.text; if(d.driver!==undefined) driverInput.value=d.driver;
+                  if(d.overall!==undefined) overallSlider.value=d.overall; if(d.high!==undefined) highSlider.value=d.high; if(d.low!==undefined) lowSlider.value=d.low;
+                  if(d.tension!==undefined) tensionSlider.value=d.tension; 
+                  if(d.smooth!==undefined) smoothSlider.value=d.smooth;
+                  if(d.stage) { stageW.value=d.stage.w; stageH.value=d.stage.h; stageD.value=d.stage.d; }
+                  if(d.pref) { scoreSlider.value=d.pref.score; favSlider.value=d.pref.fav; comfortSlider.value=d.pref.comfort; costSlider.value=d.pref.cost; designSlider.value=d.pref.design; }
+                  if(d.freqs) freqSliders.forEach((s,i)=>{if(d.freqs[i]!==undefined)s.value=d.freqs[i]});
+                  if(d.warmth) warmthSliders.forEach((s,i)=>{if(d.warmth[i]!==undefined)s.value=d.warmth[i]});
+                  if(d.softness) softnessSliders.forEach((s,i)=>{if(d.softness[i]!==undefined)s.value=d.softness[i]});
+                  if(d.density) densitySliders.forEach((s,i)=>{if(d.density[i]!==undefined)s.value=d.density[i]});
+                  updateExtraVals(); 
+                  [...freqSliders, ...warmthSliders, ...softnessSliders, ...densitySliders].forEach(s => s.nextElementSibling.textContent = s.value);
+                  prefSliders.forEach(s => s.nextElementSibling.textContent = s.value);
+                  draw();
+              } catch(err) { alert("Error: " + err); }
+          };
+          r.readAsText(f); e.target.value = '';
+      });
+    })();
+  </script>
+</body>
+</html>

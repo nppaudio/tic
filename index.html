@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TIC - Timbre Impression Chart v4 (Refined)</title>
+  <title>TIC - Timbre Impression Chart v6 (Rounding Enhanced)</title>
   <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
   <style>
     /* --- 基本スタイル --- */
@@ -309,7 +309,6 @@
         </select>
       </div>
       
-      <!-- レベル・形状調整 -->
       <div id="extra-controls" class="control-box simple-grid">
         <label>全体レベル / Overall Lv
           <input type="range" id="overallLevel" min="0" max="10" value="5" />
@@ -324,14 +323,13 @@
           <span class="value" id="valLow">10</span>
         </label>
 
-        <!-- 新しいスライダー群 -->
         <label style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 5px; flex-basis: 45%;">
-          丸み / Roundness<br><span style="font-size:0.8em; font-weight:normal;">(Linear &harr; Curve/Round)</span>
+          直線⇔曲線 / Linear ⇔ Curved<br><span style="font-size:0.8em; font-weight:normal;">(Step &harr; Melted)</span>
           <input type="range" id="tensionSlider" min="0" max="5" value="5" />
           <span class="value" id="valTension">5</span>
         </label>
         <label style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 5px; flex-basis: 45%;">
-          解像度 / Resolution<br><span style="font-size:0.8em; font-weight:normal;">(Step &harr; Smooth)</span>
+          解像度 / Resolution<br><span style="font-size:0.8em; font-weight:normal;">(Low-Res &harr; Hi-Res)</span>
           <input type="range" id="smoothSlider" min="0" max="5" value="5" />
           <span class="value" id="valSmooth">5</span>
         </label>
@@ -596,19 +594,21 @@
       }
 
       /**
-       * ポリライン描画（Step時の破綻防止、Curve時のオーバーシュート抑制）
+       * パス生成関数：ポイントのリストを受け取り、丸みと解像度設定に基づいた描画用パス配列を返す
+       * (左側のみを生成し、描画時にミラーリングすることで完全対称にする)
        */
-      function drawPolyLine(ctx, points, smoothVal, tensionVal, stepDir = 'hv') {
-          if (points.length < 2) return;
+      function generatePathPoints(points, smoothVal, tensionVal) {
+          const path = [];
+          if (points.length < 2) return path;
 
           const isCurveMode = (smoothVal === 5);
 
           if (isCurveMode) {
-              // --- 曲線モード (0: Linear blend <-> 5: Spline blend) ---
-              const blend = tensionVal / 5;
-              // Tension 10でのオーバーシュートを抑えるため、tangentFactorを少し控えめにする
-              // 通常0.5だが、blendに応じて減衰させても良い。ここでは少しだけ下げて0.45とする
-              const tangentFactor = 0.45; 
+              // --- 曲線モード (Linear <-> Spline Interpolation) ---
+              // tensionVal=0なら完全直線、5なら完全Catmull-Romスプライン
+              // 単なるブレンド率として扱う
+              const blend = tensionVal / 5; 
+              const tangentFactor = 0.5; // 標準的なテンション
               const segments = 10;
 
               for (let i = 0; i < points.length - 1; i++) {
@@ -620,11 +620,11 @@
                   for (let j = 1; j <= segments; j++) {
                       const t = j / segments;
 
-                      // Linear
+                      // Linear Point
                       const lx = p1.x + (p2.x - p1.x) * t;
                       const ly = p1.y + (p2.y - p1.y) * t;
 
-                      // Spline (Hermite / Catmull-Rom)
+                      // Spline Point (Catmull-Rom)
                       const t2 = t * t;
                       const t3 = t2 * t;
                       
@@ -641,19 +641,26 @@
                       const sx = h00*p1.x + h10*m1x + h01*p2.x + h11*m2x;
                       const sy = h00*p1.y + h10*m1y + h01*p2.y + h11*m2y;
 
+                      // Blend
                       const x = lx * (1 - blend) + sx * blend;
                       const y = ly * (1 - blend) + sy * blend;
 
-                      ctx.lineTo(x, y);
+                      path.push({x, y});
                   }
               }
           } else {
-              // --- ステップモード (角の丸め処理・破綻防止) ---
-              const steps = smoothVal + 1;
-              
-              // 基本となる最大半径（スライダー値に基づく）
-              // 少し大きめの基準値(40)に対してTensionを掛ける
-              const baseRadius = (tensionVal / 10) * 40;
+              // --- ステップモード (階段状) ---
+              // ステップ数を減らし、1段あたりの長さを確保することで丸みが見えるようにする
+              let steps;
+              if (smoothVal === 4) steps = 20;
+              else if (smoothVal === 3) steps = 15;
+              else if (smoothVal === 2) steps = 10;
+              else if (smoothVal === 1) steps = 5;
+              else steps = 3;
+
+              // 丸め比率 (0.0 ～ 0.5)
+              // Tension 5 のときに 最大半径 (セグメント長の50%) になるように設定
+              const radiusRatio = (tensionVal / 5) * 0.5;
 
               let currentX = points[0].x;
               let currentY = points[0].y;
@@ -664,52 +671,61 @@
 
                   for (let j = 1; j <= steps; j++) {
                       const t = j / steps;
-                      // 次の頂点（ターゲット）
                       const targetX = pStart.x + (pEnd.x - pStart.x) * t;
                       const targetY = pStart.y + (pEnd.y - pStart.y) * t;
 
-                      // コーナー（角）の座標
-                      let cornerX, cornerY;
-                      if (stepDir === 'hv') { // 横 -> 縦
-                          cornerX = targetX;
-                          cornerY = currentY;
-                      } else { // 縦 -> 横
-                          cornerX = currentX;
-                          cornerY = targetY;
-                      }
+                      // HV Logic: current -> (H) -> corner -> (V) -> target
+                      // cornerは「横移動した後、縦移動する前の点」
+                      const cornerX = targetX;
+                      const cornerY = currentY;
 
-                      // --- 半径の動的制限 (Adaptive Radius) ---
-                      // 現在のセグメントにおける移動量
-                      const distToCornerX = Math.abs(cornerX - currentX);
-                      const distToCornerY = Math.abs(cornerY - currentY);
-                      const distFromCornerX = Math.abs(targetX - cornerX);
-                      const distFromCornerY = Math.abs(targetY - cornerY);
-                      
-                      // 入ってくる辺の長さ と 出ていく辺の長さ
-                      const incomingLen = Math.sqrt(distToCornerX*distToCornerX + distToCornerY*distToCornerY);
-                      const outgoingLen = Math.sqrt(distFromCornerX*distFromCornerX + distFromCornerY*distFromCornerY);
-                      
-                      // 半径は、短い方の辺の半分を超えてはならない（さもないとえぐれる）
-                      const maxPossibleRadius = Math.min(incomingLen, outgoingLen) / 2;
-                      
-                      // 最終的な半径決定
-                      let radius = Math.min(baseRadius, maxPossibleRadius);
-                      // 微小な値なら丸めない（描画乱れ防止）
-                      if (radius < 0.5) radius = 0;
+                      if (radiusRatio > 0.01) {
+                          const dInX = cornerX - currentX;
+                          const dInY = cornerY - currentY;
+                          const dOutX = targetX - cornerX;
+                          const dOutY = targetY - cornerY;
+                          
+                          const lenIn = Math.sqrt(dInX*dInX + dInY*dInY);
+                          const lenOut = Math.sqrt(dOutX*dOutX + dOutY*dOutY);
+                          
+                          // 半径計算: 入線と出線の短い方の長さに対する割合
+                          const r = Math.min(lenIn, lenOut) * radiusRatio;
+                          
+                          if (r > 0.5) {
+                              // 面取り開始点
+                              const tIn = 1 - (r / lenIn);
+                              const pInX = currentX + dInX * tIn;
+                              const pInY = currentY + dInY * tIn;
+                              
+                              // 面取り終了点
+                              const tOut = r / lenOut;
+                              const pOutX = cornerX + dOutX * tOut;
+                              const pOutY = cornerY + dOutY * tOut;
 
-                      if (radius > 0) {
-                          ctx.arcTo(cornerX, cornerY, targetX, targetY, radius);
-                          ctx.lineTo(targetX, targetY);
+                              path.push({x: pInX, y: pInY});
+                              
+                              // 角の丸み（曲線）を表現するための中間点を追加
+                              // Quadratic Bezierの中点近似
+                              const qx = 0.5 * (0.5 * pInX + 0.5 * cornerX) + 0.5 * (0.5 * cornerX + 0.5 * pOutX);
+                              const qy = 0.5 * (0.5 * pInY + 0.5 * cornerY) + 0.5 * (0.5 * cornerY + 0.5 * pOutY);
+                              
+                              path.push({x: qx, y: qy});
+                              path.push({x: pOutX, y: pOutY});
+                          } else {
+                              path.push({x: cornerX, y: cornerY});
+                          }
                       } else {
-                          ctx.lineTo(cornerX, cornerY);
-                          ctx.lineTo(targetX, targetY);
+                          path.push({x: cornerX, y: cornerY});
                       }
+                      
+                      path.push({x: targetX, y: targetY});
                       
                       currentX = targetX;
                       currentY = targetY;
                   }
               }
           }
+          return path;
       }
 
       /**
@@ -765,7 +781,7 @@
         const rawTension = parseInt(tensionSlider.value);
         const rawSmooth = parseInt(smoothSlider.value);
         
-        // Tension: 0~5 (Logic handled in drawPolyLine)
+        // Tension: 0~5
         const tensionVal = rawTension;
 
         drawBackground(centerX, baseY, triHeight, baseX);
@@ -814,7 +830,9 @@
         ctx.restore();
 
         // メイングラフデータ計算
-        const pL = [], pR = [], rgbs = [], dens = [], softs = [];
+        // 左側の点のみ計算し、右側はミラーリングする
+        const pL = [], rgbs = [], dens = [], softs = [];
+        
         for (let i = 0; i < bands.length; i++) {
             const freq = parseInt(freqSliders[i].value) / 20; 
             const y0 = baseY + (triHeight * i / (bands.length - 1));
@@ -824,32 +842,36 @@
             const xOff = baseX * freq * horizontalScale * overallScale;
             
             pL.push({ x: centerX - xOff, y }); 
-            pR.push({ x: centerX + xOff, y });
             
             rgbs.push(getRGB(parseInt(warmthSliders[i].value)));
-            dens.push(parseInt(densitySliders[i].value)); softs.push(parseInt(softnessSliders[i].value));
+            dens.push(parseInt(densitySliders[i].value)); 
+            softs.push(parseInt(softnessSliders[i].value));
         }
 
-        // --- 描画パスの構築関数 ---
-        const createShapePath = () => {
+        // --- 描画パスの構築関数 (ミラーリングによる完全対称化) ---
+        const createSymmetricPath = (basePoints, sVal, tVal) => {
             ctx.beginPath();
-            // Top Center
-            const topPt = { x: centerX, y: pL[0].y }; 
-            ctx.moveTo(topPt.x, topPt.y);
-
-            // Left Side: Top -> Bottom
-            // 左辺は「左(横)に張り出してから下(縦)へ」行くことで外側に広げる => 'hv'
-            drawPolyLine(ctx, pL, rawSmooth, tensionVal, 'hv');
-
-            // Bottom Edge: Linear connection from Left Bottom to Right Bottom
-            const pBottomL = pL[pL.length - 1];
-            const pBottomR = pR[pR.length - 1];
-            ctx.lineTo(pBottomR.x, pBottomR.y);
-
-            // Right Side: Bottom -> Top
-            const pR_rev = [...pR].reverse();
-            // 右辺は「上(縦)に行ってから左(横)へ戻る」ことで外側(右側)に壁を作る => 'vh'
-            drawPolyLine(ctx, pR_rev, rawSmooth, tensionVal, 'vh');
+            
+            // 1. 左側パスの生成
+            const leftPath = generatePathPoints(basePoints, sVal, tVal);
+            
+            // Start (Top Center)
+            ctx.moveTo(centerX, basePoints[0].y);
+            
+            // Draw Left Side
+            leftPath.forEach(p => ctx.lineTo(p.x, p.y));
+            
+            // Bottom Center Connection
+            const lastP = basePoints[basePoints.length - 1];
+            ctx.lineTo(centerX, lastP.y);
+            
+            // Draw Right Side (Mirror of Left)
+            // leftPathを逆順にたどり、x座標を反転させる
+            for (let i = leftPath.length - 1; i >= 0; i--) {
+                const p = leftPath[i];
+                const mirroredX = centerX + (centerX - p.x);
+                ctx.lineTo(mirroredX, p.y);
+            }
             
             ctx.closePath();
         };
@@ -857,16 +879,10 @@
         // ボケ（Blur）描画
         if (softs.some(v => v > 0)) {
             ctx.save();
+            // ボケ用のベースポイントを計算（左側）
             const pL_blur = pL.map((p, i) => ({ x: p.x - softs[i] * 3.5, y: p.y }));
-            const pR_blur = pR.map((p, i) => ({ x: p.x + softs[i] * 3.5, y: p.y }));
             
-            ctx.beginPath();
-            ctx.moveTo(centerX, pL_blur[0].y);
-            // ボケも同様の対称性を持たせる
-            drawPolyLine(ctx, pL_blur, rawSmooth, tensionVal, 'hv');
-            ctx.lineTo(pR_blur[pR.length-1].x, pR_blur[pR.length-1].y);
-            drawPolyLine(ctx, [...pR_blur].reverse(), rawSmooth, tensionVal, 'vh');
-            ctx.closePath();
+            createSymmetricPath(pL_blur, rawSmooth, tensionVal);
 
             ctx.filter = `blur(${5 + Math.max(...softs)}px)`;
             const gB = ctx.createLinearGradient(0, pL[0].y, 0, pL[pL.length-1].y);
@@ -878,7 +894,8 @@
 
         // メイン形状描画
         ctx.save();
-        createShapePath();
+        createSymmetricPath(pL, rawSmooth, tensionVal);
+        
         const gM = ctx.createLinearGradient(0, pL[0].y, 0, pL[pL.length-1].y);
         bands.forEach((_, i) => gM.addColorStop(i/(bands.length-1), `rgba(${rgbs[i].r},${rgbs[i].g},${rgbs[i].b},0.9)`));
         ctx.fillStyle = gM; 

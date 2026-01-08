@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TIC - Timbre Impression Chart v6 (Rounding Enhanced)</title>
+  <title>TIC - Timbre Impression Chart v21 (Dynamic Layout)</title>
   <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
   <style>
     /* --- 基本スタイル --- */
@@ -70,6 +70,7 @@
       font-size: 16px;
     }
     #textInput { font-weight: bold; }
+    #reviewerInput { font-weight: normal; }
 
     /* 共通ボックススタイル */
     .control-box {
@@ -273,6 +274,7 @@
     
     <div id="controls">
       <div class="input-group">
+        <input id="reviewerInput" type="text" placeholder="レビュワー / Reviewer Name" maxlength="50" />
         <input id="textInput" type="text" placeholder="製品名など / Product Name" maxlength="100" />
         <input id="driverInput" type="text" placeholder="ドライバー構成 / Driver Info" maxlength="100" />
         
@@ -324,14 +326,14 @@
         </label>
 
         <label style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 5px; flex-basis: 45%;">
-          直線⇔曲線 / Linear ⇔ Curved<br><span style="font-size:0.8em; font-weight:normal;">(Step &harr; Melted)</span>
-          <input type="range" id="tensionSlider" min="0" max="5" value="5" />
-          <span class="value" id="valTension">5</span>
+          なだらかさ / Smoothness<br><span style="font-size:0.8em; font-weight:normal;">(Sharp &harr; Melted)</span>
+          <input type="range" id="smoothnessSlider" min="0" max="5" value="0" step="1" />
+          <span class="value" id="valSmoothness">0</span>
         </label>
         <label style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 5px; flex-basis: 45%;">
-          解像度 / Resolution<br><span style="font-size:0.8em; font-weight:normal;">(Low-Res &harr; Hi-Res)</span>
-          <input type="range" id="smoothSlider" min="0" max="5" value="5" />
-          <span class="value" id="valSmooth">5</span>
+          粗さ / Roughness<br><span style="font-size:0.8em; font-weight:normal;">(Linear &harr; Steps)</span>
+          <input type="range" id="roughnessSlider" min="0" max="5" value="0" />
+          <span class="value" id="valRoughness">0</span>
         </label>
       </div>
 
@@ -456,8 +458,8 @@
       const highSlider = document.getElementById('highLevel');
       const lowSlider = document.getElementById('lowLevel');
       
-      const tensionSlider = document.getElementById('tensionSlider');
-      const smoothSlider = document.getElementById('smoothSlider');
+      const smoothnessSlider = document.getElementById('smoothnessSlider');
+      const roughnessSlider = document.getElementById('roughnessSlider');
 
       const stageW = document.getElementById('stageWidth');
       const stageH = document.getElementById('stageHeight');
@@ -466,8 +468,8 @@
       const valOverall = document.getElementById('valOverall');
       const valHigh = document.getElementById('valHigh');
       const valLow = document.getElementById('valLow');
-      const valTension = document.getElementById('valTension');
-      const valSmooth = document.getElementById('valSmooth');
+      const valSmoothness = document.getElementById('valSmoothness');
+      const valRoughness = document.getElementById('valRoughness');
       const valStageW = document.getElementById('valStageWidth');
       const valStageH = document.getElementById('valStageHeight');
       const valStageD = document.getElementById('valStageDepth');
@@ -476,21 +478,22 @@
         valOverall.textContent = overallSlider.value;
         valHigh.textContent = highSlider.value;
         valLow.textContent = lowSlider.value;
-        valTension.textContent = tensionSlider.value;
-        valSmooth.textContent = smoothSlider.value;
+        valSmoothness.textContent = smoothnessSlider.value;
+        valRoughness.textContent = roughnessSlider.value;
         valStageW.textContent = stageW.value;
         valStageH.textContent = stageH.value;
         valStageD.textContent = stageD.value;
       }
 
-      [overallSlider, highSlider, lowSlider, tensionSlider, smoothSlider, stageW, stageH, stageD].forEach(s => s.addEventListener('input', () => {
+      [overallSlider, highSlider, lowSlider, smoothnessSlider, roughnessSlider, stageW, stageH, stageD].forEach(s => s.addEventListener('input', () => {
           updateExtraVals();
           draw();
       }));
 
+      const reviewerInput = document.getElementById('reviewerInput');
       const textInput = document.getElementById('textInput');
       const driverInput = document.getElementById('driverInput');
-      [textInput, driverInput].forEach(el => el.addEventListener('input', draw));
+      [reviewerInput, textInput, driverInput].forEach(el => el.addEventListener('input', draw));
 
       const scoreSlider = document.getElementById('score'), favSlider = document.getElementById('favorite'), comfortSlider = document.getElementById('comfort'), costSlider = document.getElementById('cost'), designSlider = document.getElementById('design');
       const valScore = document.getElementById('valScore'), valFav = document.getElementById('valFavorite'), valComfort = document.getElementById('valComfort'), valCost = document.getElementById('valCost'), valDesign = document.getElementById('valDesign');
@@ -588,149 +591,115 @@
         ctx.fillStyle = '#000';
         ctx.font = 'bold 28px Arial, sans-serif';
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle'; // ★常に下にズレた位置（middle基準）で描画
         ctx.fillText('High', centerX, baseY - 30);
         ctx.fillText('Low', centerX - baseX - 20, 432);
         ctx.fillText('Low', centerX + baseX + 20, 432);
       }
 
       /**
-       * パス生成関数：ポイントのリストを受け取り、丸みと解像度設定に基づいた描画用パス配列を返す
-       * (左側のみを生成し、描画時にミラーリングすることで完全対称にする)
+       * ★ リニアスムース・パス生成ロジック (UI反転対応)
        */
-      function generatePathPoints(points, smoothVal, tensionVal) {
-          const path = [];
-          if (points.length < 2) return path;
-
-          const isCurveMode = (smoothVal === 5);
-
-          if (isCurveMode) {
-              // --- 曲線モード (Linear <-> Spline Interpolation) ---
-              // tensionVal=0なら完全直線、5なら完全Catmull-Romスプライン
-              // 単なるブレンド率として扱う
-              const blend = tensionVal / 5; 
-              const tangentFactor = 0.5; // 標準的なテンション
-              const segments = 10;
-
-              for (let i = 0; i < points.length - 1; i++) {
-                  const p0 = (i > 0) ? points[i - 1] : points[0];
-                  const p1 = points[i];
-                  const p2 = points[i + 1];
-                  const p3 = (i < points.length - 2) ? points[i + 2] : p2;
-
-                  for (let j = 1; j <= segments; j++) {
-                      const t = j / segments;
-
-                      // Linear Point
-                      const lx = p1.x + (p2.x - p1.x) * t;
-                      const ly = p1.y + (p2.y - p1.y) * t;
-
-                      // Spline Point (Catmull-Rom)
-                      const t2 = t * t;
-                      const t3 = t2 * t;
-                      
-                      const h00 = 2*t3 - 3*t2 + 1;
-                      const h10 = t3 - 2*t2 + t;
-                      const h01 = -2*t3 + 3*t2;
-                      const h11 = t3 - t2;
-                      
-                      const m1x = (p2.x - p0.x) * tangentFactor;
-                      const m1y = (p2.y - p0.y) * tangentFactor;
-                      const m2x = (p3.x - p1.x) * tangentFactor;
-                      const m2y = (p3.y - p1.y) * tangentFactor;
-                      
-                      const sx = h00*p1.x + h10*m1x + h01*p2.x + h11*m2x;
-                      const sy = h00*p1.y + h10*m1y + h01*p2.y + h11*m2y;
-
-                      // Blend
-                      const x = lx * (1 - blend) + sx * blend;
-                      const y = ly * (1 - blend) + sy * blend;
-
-                      path.push({x, y});
-                  }
-              }
+      function generatePathPoints(points, roughnessVal, smoothnessVal) {
+          if (points.length < 2) return [];
+          
+          let rawPath = [];
+          
+          const rVal = parseInt(roughnessVal);
+          
+          if (rVal === 0) {
+              rawPath = points; 
           } else {
-              // --- ステップモード (階段状) ---
-              // ステップ数を減らし、1段あたりの長さを確保することで丸みが見えるようにする
               let steps;
-              if (smoothVal === 4) steps = 20;
-              else if (smoothVal === 3) steps = 15;
-              else if (smoothVal === 2) steps = 10;
-              else if (smoothVal === 1) steps = 5;
-              else steps = 3;
-
-              // 丸め比率 (0.0 ～ 0.5)
-              // Tension 5 のときに 最大半径 (セグメント長の50%) になるように設定
-              const radiusRatio = (tensionVal / 5) * 0.5;
+              switch(rVal) {
+                  case 1: steps = 12; break; 
+                  case 2: steps = 8; break;
+                  case 3: steps = 4; break;
+                  case 4: steps = 2; break;
+                  case 5: steps = 1; break; 
+              }
 
               let currentX = points[0].x;
               let currentY = points[0].y;
-              
+              rawPath.push({x: currentX, y: currentY});
+
               for (let i = 0; i < points.length - 1; i++) {
                   const pStart = points[i];
                   const pEnd = points[i+1];
-
                   for (let j = 1; j <= steps; j++) {
                       const t = j / steps;
                       const targetX = pStart.x + (pEnd.x - pStart.x) * t;
                       const targetY = pStart.y + (pEnd.y - pStart.y) * t;
-
-                      // HV Logic: current -> (H) -> corner -> (V) -> target
-                      // cornerは「横移動した後、縦移動する前の点」
-                      const cornerX = targetX;
-                      const cornerY = currentY;
-
-                      if (radiusRatio > 0.01) {
-                          const dInX = cornerX - currentX;
-                          const dInY = cornerY - currentY;
-                          const dOutX = targetX - cornerX;
-                          const dOutY = targetY - cornerY;
-                          
-                          const lenIn = Math.sqrt(dInX*dInX + dInY*dInY);
-                          const lenOut = Math.sqrt(dOutX*dOutX + dOutY*dOutY);
-                          
-                          // 半径計算: 入線と出線の短い方の長さに対する割合
-                          const r = Math.min(lenIn, lenOut) * radiusRatio;
-                          
-                          if (r > 0.5) {
-                              // 面取り開始点
-                              const tIn = 1 - (r / lenIn);
-                              const pInX = currentX + dInX * tIn;
-                              const pInY = currentY + dInY * tIn;
-                              
-                              // 面取り終了点
-                              const tOut = r / lenOut;
-                              const pOutX = cornerX + dOutX * tOut;
-                              const pOutY = cornerY + dOutY * tOut;
-
-                              path.push({x: pInX, y: pInY});
-                              
-                              // 角の丸み（曲線）を表現するための中間点を追加
-                              // Quadratic Bezierの中点近似
-                              const qx = 0.5 * (0.5 * pInX + 0.5 * cornerX) + 0.5 * (0.5 * cornerX + 0.5 * pOutX);
-                              const qy = 0.5 * (0.5 * pInY + 0.5 * cornerY) + 0.5 * (0.5 * cornerY + 0.5 * pOutY);
-                              
-                              path.push({x: qx, y: qy});
-                              path.push({x: pOutX, y: pOutY});
-                          } else {
-                              path.push({x: cornerX, y: cornerY});
-                          }
-                      } else {
-                          path.push({x: cornerX, y: cornerY});
-                      }
-                      
-                      path.push({x: targetX, y: targetY});
-                      
+                      const midX = (currentX + targetX) / 2;
+                      rawPath.push({x: midX, y: currentY}); 
+                      rawPath.push({x: midX, y: targetY});  
+                      rawPath.push({x: targetX, y: targetY}); 
                       currentX = targetX;
                       currentY = targetY;
                   }
               }
           }
-          return path;
+
+          if (smoothnessVal <= 0) return rawPath; 
+
+          // Phase 2: Chaikin Smoothing (固定回数)
+          const fixedIterations = 4;
+          const maxRatio = 0.5; 
+          const ratio = (smoothnessVal / 5.0) * maxRatio;
+
+          let refinedPath = rawPath;
+          for (let k = 0; k < fixedIterations; k++) {
+              refinedPath = variableChaikinSmooth(refinedPath, ratio);
+          }
+          
+          // Phase 3: Liquid Averaging (移動平均フィルタ)
+          if (smoothnessVal > 0) {
+             let smoothPasses = Math.floor(Math.pow(smoothnessVal, 2.5) * 1.5); 
+             for(let m=0; m < smoothPasses; m++) {
+                 refinedPath = applyCoordinateAveraging(refinedPath);
+             }
+          }
+
+          return refinedPath;
       }
 
-      /**
-       * 立方体を(cx, cy)を中心点として描画する
-       */
+      function variableChaikinSmooth(path, ratio) {
+          if (path.length < 2) return path;
+          const newPath = [];
+          newPath.push(path[0]); 
+          for (let i = 0; i < path.length - 1; i++) {
+              const p0 = path[i];
+              const p1 = path[i+1];
+              newPath.push({
+                  x: (1 - ratio) * p0.x + ratio * p1.x,
+                  y: (1 - ratio) * p0.y + ratio * p1.y
+              });
+              newPath.push({
+                  x: ratio * p0.x + (1 - ratio) * p1.x,
+                  y: ratio * p0.y + (1 - ratio) * p1.y
+              });
+          }
+          newPath.push(path[path.length - 1]);
+          return newPath;
+      }
+      
+      function applyCoordinateAveraging(arr) {
+          if (arr.length < 3) return arr;
+          const newArr = [];
+          newArr.push(arr[0]); 
+          for (let i = 1; i < arr.length - 1; i++) {
+              const prev = arr[i - 1];
+              const curr = arr[i];
+              const next = arr[i + 1];
+              newArr.push({
+                  x: (prev.x + curr.x + next.x) / 3,
+                  y: (prev.y + curr.y + next.y) / 3
+              });
+          }
+          newArr.push(arr[arr.length - 1]); 
+          return newArr;
+      }
+
       function drawCube(ctx, cx, cy, wVal, hVal, dVal, isWireframe) {
          const step = 18; 
          const w = wVal * step, h = hVal * step, d = dVal * step; 
@@ -778,30 +747,53 @@
         const centerX = 340, baseY = 60, baseX = 200, triHeight = Math.sqrt(3) * baseX;
         const overallScale = overallSlider.value / 10, verticalScale = highSlider.value / 10, horizontalScale = lowSlider.value / 10;
         
-        const rawTension = parseInt(tensionSlider.value);
-        const rawSmooth = parseInt(smoothSlider.value);
+        const rawSmoothness = parseFloat(smoothnessSlider.value);
+        const rawRoughness = parseInt(roughnessSlider.value);
         
-        // Tension: 0~5
-        const tensionVal = rawTension;
-
         drawBackground(centerX, baseY, triHeight, baseX);
 
         // タイトルなど
         ctx.save();
         ctx.fillStyle = '#222'; ctx.font = 'bold 28px Arial, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
         ctx.fillText('Timbre', 20, 20); ctx.fillText('Impression', 20, 52); ctx.fillText('Chart', 20, 84);
-        const dText = driverInput.value.trim();
-        if(dText) {
-             let dSize = 24; ctx.font = `bold ${dSize}px Arial, sans-serif`;
-             while (ctx.measureText(dText).width > 220 && dSize > 10) { dSize--; ctx.font = `bold ${dSize}px Arial, sans-serif`; }
-             ctx.fillStyle = '#444'; ctx.fillText(dText, 20, 131);
+        
+        // Reviewerエリア (タイトルの下)
+        const rName = reviewerInput.value.trim();
+        const revStartY = 130; 
+        
+        if (rName) {
+            ctx.fillStyle = '#666'; ctx.font = 'bold 18px Arial, sans-serif'; ctx.textAlign = 'left';
+            ctx.fillText('Reviewer', 20, revStartY);
+            
+            let rSize = 28;
+            ctx.font = `bold ${rSize}px Arial, sans-serif`;
+            ctx.fillStyle = '#222';
+            const maxW = 200; 
+            while (ctx.measureText(rName).width > maxW && rSize > 12) {
+                rSize--;
+                ctx.font = `bold ${rSize}px Arial, sans-serif`;
+            }
+            ctx.fillText(rName, 20, revStartY + 22);
         }
         ctx.restore();
+
+        // 中央下 Driver Info
+        const dText = driverInput.value.trim();
+        if(dText) {
+             ctx.save();
+             ctx.fillStyle = '#444'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+             const driverY = 440; 
+             let dSize = 24; ctx.font = `bold ${dSize}px Arial, sans-serif`;
+             while (ctx.measureText(dText).width > 220 && dSize > 10) { dSize--; ctx.font = `bold ${dSize}px Arial, sans-serif`; }
+             ctx.fillText(dText, centerX, driverY);
+             ctx.restore();
+        }
 
         // Stageエリア
         const stageOriginY = 320, stageOriginX = 90; 
         ctx.save();
         ctx.fillStyle = '#222'; ctx.font = 'bold 28px Arial, sans-serif'; ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle'; // ★ここもmiddleにして位置ズレを防止
         ctx.fillText('Stage', stageOriginX, stageOriginY - 100); 
         ctx.restore();
         drawCube(ctx, stageOriginX, stageOriginY, parseInt(stageW.value), parseInt(stageH.value), parseInt(stageD.value), false);
@@ -810,13 +802,21 @@
         // SCORE / Icons
         const rx = canvas.width - 20;
         const scoreVal = parseInt(scoreSlider.value);
+        
         if (scoreVal > 0) {
-            ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillStyle = '#222'; ctx.font = 'bold 24px Arial, sans-serif'; ctx.fillText('SCORE', rx, 20);
-            ctx.font = `bold 72px Arial, sans-serif`; ctx.fillText(scoreVal, rx, 48); ctx.restore();
+            ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'top'; 
+            ctx.fillStyle = '#222'; ctx.font = 'bold 24px Arial, sans-serif'; 
+            ctx.fillText('SCORE', rx, 20);
+            const scoreLabelWidth = ctx.measureText('SCORE').width;
+            ctx.font = `bold 72px Arial, sans-serif`; 
+            ctx.fillText(scoreVal, rx, 48); 
+            ctx.restore();
         }
         
         ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; 
-        const iconStartY = 130, iconHeight = 65; 
+        // ★ 変更点: SCOREが0なら上(20)へ、あれば下(130)へ
+        const iconStartY = (scoreVal > 0) ? 130 : 20; 
+        const iconHeight = 65; 
         const drawStat = (label, mark, val, y) => {
            ctx.font = '28px sans-serif'; ctx.fillStyle = '#000';
            let s = ""; for(let k=0; k<val; k++) s += mark;
@@ -830,15 +830,12 @@
         ctx.restore();
 
         // メイングラフデータ計算
-        // 左側の点のみ計算し、右側はミラーリングする
         const pL = [], rgbs = [], dens = [], softs = [];
         
         for (let i = 0; i < bands.length; i++) {
             const freq = parseInt(freqSliders[i].value) / 20; 
             const y0 = baseY + (triHeight * i / (bands.length - 1));
-            // 縦方向の圧縮
             const y = baseY + triHeight - (baseY + triHeight - y0) * verticalScale * overallScale;
-            // 横方向の広がり
             const xOff = baseX * freq * horizontalScale * overallScale;
             
             pL.push({ x: centerX - xOff, y }); 
@@ -848,42 +845,29 @@
             softs.push(parseInt(softnessSliders[i].value));
         }
 
-        // --- 描画パスの構築関数 (ミラーリングによる完全対称化) ---
-        const createSymmetricPath = (basePoints, sVal, tVal) => {
+        const createSymmetricPath = (basePoints, rVal, sVal) => {
             ctx.beginPath();
-            
-            // 1. 左側パスの生成
-            const leftPath = generatePathPoints(basePoints, sVal, tVal);
-            
-            // Start (Top Center)
+            const leftPath = generatePathPoints(basePoints, rVal, sVal);
+            if(leftPath.length === 0) return;
+
             ctx.moveTo(centerX, basePoints[0].y);
-            
-            // Draw Left Side
             leftPath.forEach(p => ctx.lineTo(p.x, p.y));
             
-            // Bottom Center Connection
             const lastP = basePoints[basePoints.length - 1];
             ctx.lineTo(centerX, lastP.y);
             
-            // Draw Right Side (Mirror of Left)
-            // leftPathを逆順にたどり、x座標を反転させる
             for (let i = leftPath.length - 1; i >= 0; i--) {
                 const p = leftPath[i];
                 const mirroredX = centerX + (centerX - p.x);
                 ctx.lineTo(mirroredX, p.y);
             }
-            
             ctx.closePath();
         };
 
-        // ボケ（Blur）描画
         if (softs.some(v => v > 0)) {
             ctx.save();
-            // ボケ用のベースポイントを計算（左側）
             const pL_blur = pL.map((p, i) => ({ x: p.x - softs[i] * 3.5, y: p.y }));
-            
-            createSymmetricPath(pL_blur, rawSmooth, tensionVal);
-
+            createSymmetricPath(pL_blur, rawRoughness, rawSmoothness);
             ctx.filter = `blur(${5 + Math.max(...softs)}px)`;
             const gB = ctx.createLinearGradient(0, pL[0].y, 0, pL[pL.length-1].y);
             bands.forEach((_, i) => gB.addColorStop(i/(bands.length-1), `rgba(${rgbs[i].r},${rgbs[i].g},${rgbs[i].b},${dens[i]/20})`));
@@ -892,26 +876,26 @@
             ctx.restore();
         }
 
-        // メイン形状描画
         ctx.save();
-        createSymmetricPath(pL, rawSmooth, tensionVal);
-        
+        createSymmetricPath(pL, rawRoughness, rawSmoothness);
         const gM = ctx.createLinearGradient(0, pL[0].y, 0, pL[pL.length-1].y);
         bands.forEach((_, i) => gM.addColorStop(i/(bands.length-1), `rgba(${rgbs[i].r},${rgbs[i].g},${rgbs[i].b},0.9)`));
         ctx.fillStyle = gM; 
         ctx.fill(); 
         ctx.restore();
 
-        // 最下部帯
+        // Product Name (Bottom)
         const bH = 45;
         ctx.fillStyle = '#000';
         ctx.fillRect(0, canvas.height - bH, canvas.width, bH);
         const txt = textInput.value.trim();
         if (txt) {
+          ctx.save(); // ★状態保存して他の描画への影響を防ぐ
           ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
           let fs = 32; ctx.font = `bold ${fs}px Arial, sans-serif`;
           while (ctx.measureText(txt).width > canvas.width * 0.9 && fs > 12) { fs--; ctx.font = `bold ${fs}px Arial, sans-serif`; }
           ctx.fillText(txt, centerX, canvas.height - (bH / 2) + 2);
+          ctx.restore(); // ★状態復元
         }
       }
 
@@ -927,9 +911,9 @@
       });
       document.getElementById('exportDataBtn').addEventListener('click', () => {
           const d = { 
-              text: textInput.value, driver: driverInput.value, 
+              reviewer: reviewerInput.value, text: textInput.value, driver: driverInput.value, 
               overall: overallSlider.value, high: highSlider.value, low: lowSlider.value, 
-              tension: tensionSlider.value, smooth: smoothSlider.value, 
+              smoothness: smoothnessSlider.value, roughness: roughnessSlider.value, 
               stage: { w: stageW.value, h: stageH.value, d: stageD.value }, 
               pref: { score: scoreSlider.value, fav: favSlider.value, comfort: comfortSlider.value, cost: costSlider.value, design: designSlider.value }, 
               freqs: freqSliders.map(s => s.value), warmth: warmthSliders.map(s => s.value), softness: softnessSliders.map(s => s.value), density: densitySliders.map(s => s.value) 
@@ -943,10 +927,11 @@
           r.onload = ev => {
               try {
                   const d = JSON.parse(ev.target.result);
+                  if(d.reviewer!==undefined) reviewerInput.value=d.reviewer;
                   if(d.text!==undefined) textInput.value=d.text; if(d.driver!==undefined) driverInput.value=d.driver;
                   if(d.overall!==undefined) overallSlider.value=d.overall; if(d.high!==undefined) highSlider.value=d.high; if(d.low!==undefined) lowSlider.value=d.low;
-                  if(d.tension!==undefined) tensionSlider.value=d.tension; 
-                  if(d.smooth!==undefined) smoothSlider.value=d.smooth;
+                  if(d.smoothness!==undefined) smoothnessSlider.value=d.smoothness; 
+                  if(d.roughness!==undefined) roughnessSlider.value=d.roughness;
                   if(d.stage) { stageW.value=d.stage.w; stageH.value=d.stage.h; stageD.value=d.stage.d; }
                   if(d.pref) { scoreSlider.value=d.pref.score; favSlider.value=d.pref.fav; comfortSlider.value=d.pref.comfort; costSlider.value=d.pref.cost; designSlider.value=d.pref.design; }
                   if(d.freqs) freqSliders.forEach((s,i)=>{if(d.freqs[i]!==undefined)s.value=d.freqs[i]});

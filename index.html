@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TIC - Timbre Impression Chart v21 (Dynamic Layout)</title>
+  <title>TIC - Timbre Impression Chart v22 (Final Swap)</title>
   <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
   <style>
     /* --- 基本スタイル --- */
@@ -383,8 +383,8 @@
             <button id="saveFullBtn" class="saveBtn">全画面保存 / FULL IMG SAVE</button>
         </div>
         <div class="btn-row">
-            <button id="exportDataBtn" class="fileBtn">設定保存 / DATA SAVE</button>
             <button id="importDataBtn" class="fileBtn" onclick="document.getElementById('fileInput').click()">設定読込 / DATA LOAD</button>
+            <button id="exportDataBtn" class="fileBtn">設定保存 / DATA SAVE</button>
             <input type="file" id="fileInput" style="display: none;" accept=".json,.txt" />
         </div>
       </div>
@@ -762,9 +762,11 @@
         const revStartY = 130; 
         
         if (rName) {
+            // Label (Reviewer)
             ctx.fillStyle = '#666'; ctx.font = 'bold 18px Arial, sans-serif'; ctx.textAlign = 'left';
             ctx.fillText('Reviewer', 20, revStartY);
             
+            // Name (下に表示)
             let rSize = 28;
             ctx.font = `bold ${rSize}px Arial, sans-serif`;
             ctx.fillStyle = '#222';
@@ -773,6 +775,7 @@
                 rSize--;
                 ctx.font = `bold ${rSize}px Arial, sans-serif`;
             }
+            // 少し下に描画 (Labelから近づける: +22px程度)
             ctx.fillText(rName, 20, revStartY + 22);
         }
         ctx.restore();
